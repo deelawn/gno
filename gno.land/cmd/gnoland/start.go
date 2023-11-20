@@ -5,11 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gnolang/gno/gno.land/pkg/gnoland"
+	"github.com/gnolang/gno/telemetry"
 	abci "github.com/gnolang/gno/tm2/pkg/bft/abci/types"
 	"github.com/gnolang/gno/tm2/pkg/bft/config"
 	"github.com/gnolang/gno/tm2/pkg/bft/node"
@@ -176,6 +179,26 @@ func (c *startCfg) RegisterFlags(fs *flag.FlagSet) {
 func execStart(c *startCfg, io commands.IO) error {
 	logger := log.NewTMLogger(log.NewSyncWriter(io.Out()))
 	dataDir := c.dataDir
+
+	if strings.ToLower(os.Getenv("TELEMETRY_ENABLED")) == "true" {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var port uint64
+		var err error
+		portStr := os.Getenv("TELEMETRY_METRICS_PORT")
+		if portStr != "" {
+			port, err = strconv.ParseUint(portStr, 10, 0)
+		}
+
+		if err != nil {
+			panic("invalid TELEMETRY_METRICS_PORT: " + portStr)
+		}
+
+		if err = telemetry.Init(ctx, port); err != nil {
+			panic("error initialzing telemetry: " + err.Error())
+		}
+	}
 
 	var (
 		cfg        *config.Config
