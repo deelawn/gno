@@ -58,7 +58,7 @@ func (m mockEventStore) Append(result types.TxResult) error {
 
 type (
 	fireEventDelegate      func(events.Event)
-	addListenerDelegate    func(string, events.EventCallback)
+	addListenerDelegate    func(events.Listener)
 	removeListenerDelegate func(string)
 )
 
@@ -76,9 +76,9 @@ func (m *mockEventSwitch) FireEvent(ev events.Event) {
 	}
 }
 
-func (m *mockEventSwitch) AddListener(listenerID string, cb events.EventCallback) {
+func (m *mockEventSwitch) AddListener(listener events.Listener) {
 	if m.addListenerFn != nil {
-		m.addListenerFn(listenerID, cb)
+		m.addListenerFn(listener)
 	}
 }
 

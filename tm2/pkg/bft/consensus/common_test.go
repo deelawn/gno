@@ -245,15 +245,21 @@ func validatePrevoteAndPrecommit(t *testing.T, cs *ConsensusState, thisRound, lo
 	validatePrecommit(t, cs, thisRound, lockRound, privVal, votedBlockHash, lockedBlockHash)
 }
 
-func subscribeToVoter(cs *ConsensusState, addr crypto.Address) <-chan events.Event {
-	return events.SubscribeFiltered(cs.evsw, testSubscriber, func(event events.Event) bool {
-		if vote, ok := event.(types.EventVote); ok {
-			if vote.Vote.ValidatorAddress == addr {
-				return true
-			}
+type validatorFilterer struct {
+	address crypto.Address
+}
+
+func (f validatorFilterer) Filter(event events.Event) bool {
+	if vote, ok := event.(types.EventVote); ok {
+		if vote.Vote.ValidatorAddress == f.address {
+			return true
 		}
-		return false
-	})
+	}
+	return false
+}
+
+func subscribeToVoter(cs *ConsensusState, addr crypto.Address) <-chan events.Event {
+	return events.SubscribeFiltered(cs.evsw, testSubscriber, &validatorFilterer{address: addr})
 }
 
 // -------------------------------------------------------------------------------

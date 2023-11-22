@@ -365,6 +365,26 @@ func (conR *ConsensusReactor) FastSync() bool {
 	return conR.fastSync
 }
 
+type broadcastEventListener struct {
+	id               string
+	consensusReactor *ConsensusReactor
+}
+
+func (l *broadcastEventListener) ID() string {
+	return l.id
+}
+
+func (l *broadcastEventListener) Listen(event events.Event) {
+	switch event := event.(type) {
+	case cstypes.EventNewRoundStep:
+		l.consensusReactor.broadcastNewRoundStepMessage(event)
+	case cstypes.EventNewValidBlock:
+		l.consensusReactor.broadcastNewValidBlockMessage(event)
+	case types.EventVote:
+		l.consensusReactor.broadcastHasVoteMessage(event.Vote)
+	}
+}
+
 //--------------------------------------
 
 // subscribeToBroadcastEvents subscribes for new round steps and votes
@@ -372,16 +392,12 @@ func (conR *ConsensusReactor) FastSync() bool {
 // them to peers upon receiving.
 func (conR *ConsensusReactor) subscribeToBroadcastEvents() {
 	const subscriber = "consensus-reactor"
-	conR.conS.evsw.AddListener(subscriber, func(event events.Event) {
-		switch event := event.(type) {
-		case cstypes.EventNewRoundStep:
-			conR.broadcastNewRoundStepMessage(event)
-		case cstypes.EventNewValidBlock:
-			conR.broadcastNewValidBlockMessage(event)
-		case types.EventVote:
-			conR.broadcastHasVoteMessage(event.Vote)
-		}
-	})
+	listener := &broadcastEventListener{
+		id:               subscriber,
+		consensusReactor: conR,
+	}
+
+	conR.conS.evsw.AddListener(listener)
 }
 
 func (conR *ConsensusReactor) unsubscribeFromBroadcastEvents() {

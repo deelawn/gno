@@ -35,8 +35,8 @@ func TestEventStoreService_Monitor(t *testing.T) {
 		receivedResults = make([]types.TxResult, 0)
 		receivedSize    atomic.Int64
 
-		cb    events.EventCallback
-		cbSet atomic.Bool
+		listener events.Listener
+		cbSet    atomic.Bool
 
 		mockEventStore = &mockEventStore{
 			startFn: func() error {
@@ -60,12 +60,12 @@ func TestEventStoreService_Monitor(t *testing.T) {
 		}
 		mockEventSwitch = &mockEventSwitch{
 			fireEventFn: func(event events.Event) {
-				// Exec the callback on event fire
-				cb(event)
+				// Exec the listener on event fire
+				listener.Listen(event)
 			},
-			addListenerFn: func(_ string, callback events.EventCallback) {
-				// Attach callback
-				cb = callback
+			addListenerFn: func(l events.Listener) {
+				// Attach listner
+				listener = l
 
 				// Atomic because we are accessing this info from a routine
 				cbSet.Store(true)

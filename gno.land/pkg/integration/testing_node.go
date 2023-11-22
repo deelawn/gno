@@ -157,6 +157,22 @@ func DefaultTestingTMConfig(gnoroot string) *tmcfg.Config {
 	return tmconfig
 }
 
+type newBlockListener struct {
+	id    string
+	once  *sync.Once
+	ready func()
+}
+
+func (l *newBlockListener) ID() string {
+	return l.id
+}
+
+func (l *newBlockListener) Listen(ev events.Event) {
+	if _, ok := ev.(bft.EventNewBlock); ok {
+		l.once.Do(l.ready)
+	}
+}
+
 // waitForNodeReadiness waits until the node is ready, signaling via the EventNewBlock event.
 // XXX: This should be replace by https://github.com/gnolang/gno/pull/1216
 func waitForNodeReadiness(n *node.Node) <-chan struct{} {
@@ -170,11 +186,13 @@ func waitForNodeReadiness(n *node.Node) <-chan struct{} {
 		n.EventSwitch().RemoveListener(listenerID)
 	}
 
-	n.EventSwitch().AddListener(listenerID, func(ev events.Event) {
-		if _, ok := ev.(bft.EventNewBlock); ok {
-			once.Do(ready)
-		}
-	})
+	listener := &newBlockListener{
+		id:    listenerID,
+		once:  &once,
+		ready: ready,
+	}
+
+	n.EventSwitch().AddListener(listener)
 
 	if n.BlockStore().Height() > 0 {
 		once.Do(ready)

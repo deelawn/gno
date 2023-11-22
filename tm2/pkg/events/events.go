@@ -24,7 +24,7 @@ type Fireable interface {
 type Listenable interface {
 	// Multiple callbacks can be registered for a given listenerID.  Events are
 	// called back in the order that they were registered with this function.
-	AddListener(listenerID string, cb EventCallback)
+	AddListener(Listener)
 	// Removes all callbacks that match listenerID.
 	RemoveListener(listenerID string)
 }
@@ -53,7 +53,7 @@ type eventSwitch struct {
 	service.BaseService
 
 	mtx       sync.RWMutex
-	listeners []listenCell
+	listeners []Listener
 }
 
 func NilEventSwitch() EventSwitch {
@@ -62,7 +62,7 @@ func NilEventSwitch() EventSwitch {
 
 func NewEventSwitch() EventSwitch {
 	evsw := &eventSwitch{
-		listeners: make([]listenCell, 0, 10),
+		listeners: make([]Listener, 0, 10),
 	}
 	evsw.BaseService = *service.NewBaseService(nil, "EventSwitch", evsw)
 	return evsw
@@ -74,18 +74,18 @@ func (evsw *eventSwitch) OnStart() error {
 
 func (evsw *eventSwitch) OnStop() {}
 
-func (evsw *eventSwitch) AddListener(listenerID string, cb EventCallback) {
+func (evsw *eventSwitch) AddListener(listener Listener) {
 	evsw.mtx.Lock()
-	evsw.listeners = append(evsw.listeners, listenCell{listenerID, cb})
+	evsw.listeners = append(evsw.listeners, listener)
 	evsw.mtx.Unlock()
 }
 
 func (evsw *eventSwitch) RemoveListener(listenerID string) {
 	evsw.mtx.Lock()
-	newlisteners := make([]listenCell, 0, len(evsw.listeners))
-	for _, cell := range evsw.listeners {
-		if cell.listenerID != listenerID {
-			newlisteners = append(newlisteners, cell)
+	newlisteners := make([]Listener, 0, len(evsw.listeners))
+	for _, listener := range evsw.listeners {
+		if listener.ID() != listenerID {
+			newlisteners = append(newlisteners, listener)
 		}
 	}
 	evsw.listeners = newlisteners
@@ -99,12 +99,12 @@ func (evsw *eventSwitch) FireEvent(event Event) {
 		return
 	}
 	evsw.mtx.RLock()
-	listeners := make([]listenCell, len(evsw.listeners))
+	listeners := make([]Listener, len(evsw.listeners))
 	copy(listeners, evsw.listeners)
 	evsw.mtx.RUnlock()
 
-	for _, cell := range listeners {
-		cell.cb(event)
+	for _, listener := range listeners {
+		listener.Listen(event)
 	}
 }
 

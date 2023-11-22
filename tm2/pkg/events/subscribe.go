@@ -1,7 +1,6 @@
 package events
 
 import (
-	"log"
 	"reflect"
 	"time"
 )
@@ -27,49 +26,18 @@ func SubscribeToEvent(evsw EventSwitch, listenerID string, protoevent Event) <-c
 
 func SubscribeToEventOn(evsw EventSwitch, listenerID string, protoevent Event, ch chan Event) <-chan Event {
 	rt := reflect.TypeOf(protoevent)
-	return SubscribeFilteredOn(evsw, listenerID, func(event Event) bool {
-		return reflect.TypeOf(event) == rt
-	}, ch)
+	return SubscribeFilteredOn(evsw, listenerID, &TypeFilterer{Type: rt}, ch)
 }
 
 type EventFilter func(Event) bool
 
-func SubscribeFiltered(evsw EventSwitch, listenerID string, filter EventFilter) <-chan Event {
+func SubscribeFiltered(evsw EventSwitch, listenerID string, filterer Filterer) <-chan Event {
 	ch := make(chan Event, 0)
-	return SubscribeFilteredOn(evsw, listenerID, filter, ch)
+	return SubscribeFilteredOn(evsw, listenerID, filterer, ch)
 }
 
-func SubscribeFilteredOn(evsw EventSwitch, listenerID string, filter EventFilter, ch chan Event) <-chan Event {
-	evsw.AddListener(listenerID, func(event Event) {
-		if filter != nil && !filter(event) {
-			return // filter
-		}
-		// NOTE: This callback must not block for performance.
-		if cap(ch) == 0 {
-			timeout := 10 * time.Second
-		LOOP:
-			for {
-				select { // sync
-				case ch <- event:
-					break LOOP
-				case <-evsw.Quit():
-					close(ch)
-					break LOOP
-				case <-time.After(timeout):
-					// After a minute, print a message for debugging.
-					log.Printf("[WARN] EventSwitch subscriber %v blocked on %v for %v", listenerID, event, timeout)
-					// Exponentially back off warning messages.
-					timeout *= 2
-				}
-			}
-		} else {
-			select {
-			case ch <- event:
-			default: // async
-				evsw.RemoveListener(listenerID) // TODO log
-				close(ch)
-			}
-		}
-	})
+func SubscribeFilteredOn(evsw EventSwitch, listenerID string, filterer Filterer, ch chan Event) <-chan Event {
+	listener := NewEventListener(evsw, listenerID, ch, filterer, 10*time.Second)
+	evsw.AddListener(listener)
 	return ch
 }
