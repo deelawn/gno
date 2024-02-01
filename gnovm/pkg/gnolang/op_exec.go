@@ -137,6 +137,7 @@ func (m *Machine) doOpExec(op Op) {
 			panic("should not happen")
 		}
 	case OpRangeIter, OpRangeIterArrayPtr:
+		lb := m.LastBlock()
 		bs := s.(*bodyStmt)
 		xv := m.PeekValue(1)
 		// TODO check length.
@@ -206,6 +207,11 @@ func (m *Machine) doOpExec(op Op) {
 				s = next // switch on bs.Active
 				goto EXEC_SWITCH
 			} else if bs.NextBodyIndex == bs.BodyLen {
+				for _, inlineFunc := range lb.inlineFuncs {
+					inlineFunc.FinalizeBlockClosure()
+				}
+				lb.inlineFuncs = nil
+
 				if bs.ListIndex < bs.ListLen-1 {
 					// set up next assign if needed.
 					switch bs.Op {
