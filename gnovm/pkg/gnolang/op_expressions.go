@@ -696,8 +696,6 @@ func (m *Machine) doOpFuncLit() {
 			continue
 		}
 
-		// necessary?
-		// vp.Depth -= 1 // from the perspective of funcLit block
 		nameExpressions = append(
 			nameExpressions,
 			&NameExpr{
@@ -707,6 +705,8 @@ func (m *Machine) doOpFuncLit() {
 		)
 	}
 
+	// Sort by path depth so we can traverse the named expressions as we bubble up
+	// through the parent blocks.
 	sort.Slice(
 		nameExpressions,
 		func(i, j int) bool {
@@ -724,20 +724,22 @@ func (m *Machine) doOpFuncLit() {
 		PkgPath:             m.Package.PkgPath,
 		body:                x.Body,
 		nativeBody:          nil,
-		finalizedNamedTypes: make(map[noAttrNameExpr]*TypedValue),
+		finalizedNamedTypes: make(map[ValuePath]*TypedValue),
 	}
 
 	scopedBlock := lb
 	lastDepth := uint8(1)
 	for _, expr := range nameExpressions {
 		if expr.Path.Depth-1 != uint8(lastDepth) {
-			for i := uint8(1); i < expr.Path.Depth-1; i++ { // find target block at certain depth
+			for i := uint8(1); i < expr.Path.Depth-1; i++ {
 				scopedBlock = lb.GetParent(m.Store)
 			}
 
 			lastDepth = expr.Path.Depth - 1
 		}
 
+		// Create references back to this function in the blocks where the
+		// name expression values live.
 		indexFuncVals := scopedBlock.closureRefs[int(expr.Path.Index)]
 		indexFuncVals = append(
 			indexFuncVals,

@@ -370,11 +370,6 @@ type NameExpr struct {
 	Name
 }
 
-type noAttrNameExpr struct {
-	Name
-	ValuePath
-}
-
 type NameExprs []NameExpr
 
 type BasicLitExpr struct {

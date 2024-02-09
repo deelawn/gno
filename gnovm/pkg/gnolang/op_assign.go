@@ -47,13 +47,9 @@ func (m *Machine) handleRedefinition(block *Block, valuePath ValuePath, tv *Type
 
 	tvCopy := tv.unrefCopy(m.Alloc, m.Store)
 	for _, ref := range funcRefs {
-		newNameExpr := noAttrNameExpr{
-			Name:      valuePath.Name,
-			ValuePath: valuePath,
-		}
-
-		newNameExpr.Depth = ref.depth
-		ref.fv.finalizedNamedTypes[newNameExpr] = &tvCopy
+		newValuePath := valuePath
+		newValuePath.Depth = ref.depth
+		ref.fv.finalizedNamedTypes[newValuePath] = &tvCopy
 	}
 
 	// This particular reference has been resolved.

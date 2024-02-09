@@ -539,7 +539,7 @@ type FuncValue struct {
 
 	body                []Stmt         // function body
 	nativeBody          func(*Machine) // alternative to Body
-	finalizedNamedTypes map[noAttrNameExpr]*TypedValue
+	finalizedNamedTypes map[ValuePath]*TypedValue
 }
 
 func (fv *FuncValue) IsNative() bool {
@@ -2266,7 +2266,7 @@ type Block struct {
 	// closureRefs maps `Values` indexes to func values. This is used to publish finalized
 	// values to function that reference them when the named values are redefined.
 	closureRefs           map[int][]*funcValueWithDepth
-	resolvedClosureValues map[noAttrNameExpr]*TypedValue
+	resolvedClosureValues map[ValuePath]*TypedValue
 }
 
 type funcValueWithDepth struct {
@@ -2354,21 +2354,12 @@ func (b *Block) GetPointerToInt(store Store, index int) PointerValue {
 	}
 }
 
-func (b *Block) GetResolvedClosureValuePointer(name noAttrNameExpr, offset uint8) (pv PointerValue, found bool) {
-	// var (
-	// 	parent *Block
-	// 	ok     bool
-	// )
-	// if parent, ok = b.Parent.(*Block); !ok || parent == nil {
-	// 	return
-	// }
-
+func (b *Block) GetResolvedClosureValuePointer(valuePath ValuePath, offset uint8) (pv PointerValue, found bool) {
 	if b.resolvedClosureValues == nil {
 		return
 	}
 
-	// name.Depth = name.Depth - offset + 2
-	tv, ok := b.resolvedClosureValues[name]
+	tv, ok := b.resolvedClosureValues[valuePath]
 	if !ok {
 		return
 	}
@@ -2395,45 +2386,39 @@ func (b *Block) GetPointerTo(store Store, path ValuePath) PointerValue {
 		}
 	}
 
-	// if pointerValue, ok := b.GetResolvedClosureValuePointer(
-	// 	noAttrNameExpr{
-	// 		Name:      path.Name,
-	// 		ValuePath: path,
-	// 	},
-	// ); ok {
-	// 	return pointerValue
-	// }
+	var (
+		funcBlock        *Block
+		closureValuePath ValuePath
+	)
 
 	// NOTE: For most block paths, Depth starts at 1, but
 	// the generation for uverse is 0.  If path.Depth is
 	// 0, it implies that b == uverse, and the condition
 	// would fail as if it were 1.
-	var (
-		child           *Block
-		closureNameExpr noAttrNameExpr
-	)
 	for i := uint8(1); i < path.Depth; i++ {
-		if child == nil && len(b.resolvedClosureValues) != 0 {
+		if funcBlock == nil && len(b.resolvedClosureValues) != 0 {
 			// fmt.Println(
 			// 	len(b.resolvedClosureValues),
 			// 	path.Depth,
 			// 	b.resolvedClosureValues,
 			// )
 
-			newPath := path
-			newPath.Depth = newPath.Depth - i + 1
-			closureNameExpr = noAttrNameExpr{Name: path.Name, ValuePath: newPath}
-			if b.resolvedClosureValues[closureNameExpr] != nil {
-				child = b
+			closureValuePath = path
+			closureValuePath.Depth = closureValuePath.Depth - i + 1
+			if b.resolvedClosureValues[closureValuePath] != nil {
+				funcBlock = b
 			}
 		}
 
 		b = b.GetParent(store)
 	}
 
-	if child != nil {
-		if pointerValue, ok := child.GetResolvedClosureValuePointer(
-			closureNameExpr,
+	// If this value is being retrieved as part of a closure execution, then try to get
+	// the pointer value from the resolved closure values that were published during a
+	// variable redeifinition in a parent block.
+	if funcBlock != nil {
+		if pointerValue, ok := funcBlock.GetResolvedClosureValuePointer(
+			closureValuePath,
 			path.Depth,
 		); ok {
 			return pointerValue
