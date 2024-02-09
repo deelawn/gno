@@ -748,6 +748,11 @@ func (m *Machine) doOpFuncLit() {
 				depth: expr.Path.Depth,
 			},
 		)
+
+		if scopedBlock.closureRefs == nil {
+			scopedBlock.closureRefs = make(map[int][]*funcValueWithDepth)
+		}
+
 		scopedBlock.closureRefs[int(expr.Path.Index)] = indexFuncVals
 	}
 
