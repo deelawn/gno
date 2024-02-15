@@ -1067,7 +1067,7 @@ func copyValueWithRefs(parent Object, val Value) Value {
 	case DataByteValue:
 		panic("should not happen")
 	case PointerValue:
-		if cv.Base != nil {
+		if cv.Base != nil && cv.Base.(Object).GetRefCount() != 0 {
 			return PointerValue{
 				/*
 					already represented in .Base[Index]:
