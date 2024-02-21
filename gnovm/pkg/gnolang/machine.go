@@ -6,14 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
+	bm "github.com/gnolang/gno/benchmarking"
+	"github.com/gnolang/gno/telemetry"
+	"github.com/gnolang/gno/telemetry/traces"
 	"github.com/gnolang/gno/tm2/pkg/errors"
 	"github.com/gnolang/gno/tm2/pkg/std"
+	"github.com/gnolang/gno/tm2/pkg/store"
+	"github.com/gnolang/overflow"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 //----------------------------------------
@@ -41,9 +48,11 @@ type Machine struct {
 	ReadOnly   bool
 	MaxCycles  int64
 
-	Output  io.Writer
-	Store   Store
-	Context interface{}
+	Output     io.Writer
+	Store      Store
+	Context    interface{}
+	VMGasMeter store.GasMeter
+	Benchmark  bool // turn on and off benchmark at machine level.
 }
 
 // NewMachine initializes a new gno virtual machine, acting as a shorthand
@@ -75,6 +84,7 @@ type MachineOptions struct {
 	Alloc         *Allocator // or see MaxAllocBytes.
 	MaxAllocBytes int64      // or 0 for no limit.
 	MaxCycles     int64      // or 0 for no limit.
+	VMGasMeter    store.GasMeter
 }
 
 // the machine constructor gets spammed
@@ -99,6 +109,8 @@ func NewMachineWithOptions(opts MachineOptions) *Machine {
 	checkTypes := opts.CheckTypes
 	readOnly := opts.ReadOnly
 	maxCycles := opts.MaxCycles
+	vmGasMeter := opts.VMGasMeter
+
 	output := opts.Output
 	if output == nil {
 		output = os.Stdout
@@ -133,6 +145,11 @@ func NewMachineWithOptions(opts MachineOptions) *Machine {
 	mm.Output = output
 	mm.Store = store
 	mm.Context = context
+	mm.VMGasMeter = vmGasMeter
+
+	if mm.Alloc != nil {
+		mm.Alloc.vmGasMeter = &mm.VMGasMeter
+	}
 
 	if pv != nil {
 		mm.SetActivePackage(pv)
@@ -668,6 +685,13 @@ func (m *Machine) RunMain() {
 // Input must not have been preprocessed, that is,
 // it should not be the child of any parent.
 func (m *Machine) Eval(x Expr) []TypedValue {
+	if telemetry.TracesEnabled() {
+		spanEnder := traces.StartSpan(
+			"Machine.Eval",
+		)
+		defer spanEnder.End()
+	}
+
 	if debug {
 		m.Printf("Machine.Eval(%v)\n", x)
 	}
@@ -692,7 +716,24 @@ func (m *Machine) Eval(x Expr) []TypedValue {
 		// x already creates its own scope.
 	}
 	// Preprocess x.
+	// telemetry start
+	var span *traces.Span
+	if telemetry.TracesEnabled() {
+		defer span.End()
+
+		span = traces.StartSpan(
+			"Eval.Preprocess",
+		)
+	}
+	// telemetry end
 	x = Preprocess(m.Store, last, x).(Expr)
+
+	// telemetry start
+	if telemetry.TracesEnabled() {
+		span.End()
+	}
+	// telemetry end
+
 	// Evaluate x.
 	start := m.NumValues
 	m.PushOp(OpHalt)
@@ -946,10 +987,17 @@ const (
 	OpReturnCallDefers  Op = 0xD7 // TODO rename?
 )
 
+const GasFactorCpu int64 = 1
+
 //----------------------------------------
 // "CPU" steps.
 
 func (m *Machine) incrCPU(cycles int64) {
+	if m.VMGasMeter != nil {
+		gasCpu := overflow.Mul64p(cycles, GasFactorCpu)
+		m.VMGasMeter.ConsumeGas(gasCpu, "CpuCycles")
+	}
+
 	m.Cycles += cycles
 	if m.MaxCycles != 0 && m.Cycles > m.MaxCycles {
 		panic("CPU cycle overrun")
@@ -1084,17 +1132,68 @@ const (
 // main run loop.
 
 func (m *Machine) Run() {
+	// machine run are executed in preprocess and evaluate static
+	// instrument here will generate tons of data for each op
+	// we only enable  this to get op benchmarked againsted vm op execution duration
+	// so that we can adjust the cpu cycle number.
+
+	// Telemetry Start
+	var span *traces.Span
+	if telemetry.TracesEnabled() && traces.IsTraceOp() {
+		traces.InitNamespace(nil, traces.NamespaceMachineRun)
+		// Ensure that span.End() is called on panic.
+		defer func() {
+			if span != nil {
+				span.End()
+			}
+		}()
+	}
+	// Telemetry End
+
+	var measure bool
 	for {
+		measure = bm.Enabled() &&
+			bm.Entry == bm.KEEPER_CALL &&
+			m.Benchmark == true // AFTER the first OpExec executed, we turn on the measurement
+		if measure {
+			// we set TraceInit at package level instead of machine level because
+			// the instrument code does not have have reference to machine instance in gnostore
+			// TODO: it may make more sense to add trace init flag and pass it in gnostore  so
+			// that we can manage the benchmark flag at machine level
+			bm.Start = true
+		}
 		op := m.PopOp()
+		// Telemetry Start
+		if telemetry.TracesEnabled() && traces.IsTraceOp() { // avoid generating too much data
+			if span != nil {
+				span.End()
+			}
+			span = traces.StartSpan(
+				"Machine.Run",
+				attribute.String("op", opString[op]),
+				attribute.Int64("cycles", opCPU[op]),
+			)
+		}
+		// Telemetry End
+
+		if measure {
+			bm.StartMeasurement(bm.VMOpCode(byte(op)))
+		}
 		// TODO: this can be optimized manually, even into tiers.
 		switch op {
 		/* Control operators */
 		case OpHalt:
 			m.incrCPU(OpCPUHalt)
+			if measure {
+				if bm.OpCodeDetails {
+					log.Println("benchmark.OpHalt")
+				}
+				bm.StopMeasurement(0)
+				bm.Start = false // reset the measurement
+			}
 			return
 		case OpNoop:
 			m.incrCPU(OpCPUNoop)
-			continue
 		case OpExec:
 			m.incrCPU(OpCPUExec)
 			m.doOpExec(op)
@@ -1409,7 +1508,13 @@ func (m *Machine) Run() {
 		default:
 			panic(fmt.Sprintf("unexpected opcode %s", op.String()))
 		}
+		if measure {
+			bm.StopMeasurement(0)
+		}
 	}
+
+	// Uncomment this if this code ever becomes reachable.
+	// spanEnder.End()
 }
 
 //----------------------------------------
@@ -1597,6 +1702,10 @@ func (m *Machine) PopCopyValues(n int) []TypedValue {
 
 // Decrements NumValues by number of last results.
 func (m *Machine) PopResults() {
+	if bm.OpCodeDetails && bm.Start {
+		log.Println("benchmark.OpPopResults")
+	}
+
 	if debug {
 		for i := 0; i < m.NumResults; i++ {
 			m.PopValue()
@@ -1629,6 +1738,9 @@ func (m *Machine) PopBlock() (b *Block) {
 	}
 	numBlocks := len(m.Blocks)
 	b = m.Blocks[numBlocks-1]
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpPopBlock, %v\n", b)
+	}
 	m.Blocks = m.Blocks[:numBlocks-1]
 	return b
 }
@@ -1733,6 +1845,9 @@ func (m *Machine) PopFrame() Frame {
 
 func (m *Machine) PopFrameAndReset() {
 	fr := m.PopFrame()
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpPopFrameAndReset, %v\n", fr)
+	}
 	m.NumOps = fr.NumOps
 	m.NumValues = fr.NumValues
 	m.Exprs = m.Exprs[:fr.NumExprs]

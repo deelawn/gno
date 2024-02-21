@@ -2,9 +2,11 @@ package gnolang
 
 import (
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/cockroachdb/apd/v3"
+	bm "github.com/gnolang/gno/benchmarking"
 )
 
 // ----------------------------------------
@@ -12,6 +14,10 @@ import (
 
 func (m *Machine) doOpBinary1() {
 	bx := m.PopExpr().(*BinaryExpr)
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpBinary1, %v\n", bx)
+	}
+
 	switch bx.Op {
 	case LAND:
 		res := m.PeekValue(1) // re-use
@@ -44,6 +50,9 @@ func (m *Machine) doOpLor() {
 	// get right and left operands.
 	rv := m.PopValue()
 	lv := m.PeekValue(1) // also the result
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpLor, %v, %v\n", lv, rv)
+	}
 	if debug {
 		assertSameTypes(lv.T, rv.T)
 	}
@@ -59,6 +68,10 @@ func (m *Machine) doOpLand() {
 	// get right and left operands.
 	rv := m.PopValue()
 	lv := m.PeekValue(1) // also the result
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpLand, %v, %v\n", lv, rv)
+	}
+
 	if debug {
 		assertSameTypes(lv.T, rv.T)
 	}
@@ -147,9 +160,11 @@ func (m *Machine) doOpGtr() {
 	if debug {
 		assertSameTypes(lv.T, rv.T)
 	}
-
 	// set the result in lv.
 	res := isGtr(lv, rv)
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpGtr, %v | %v | %v\n", lv, rv, res)
+	}
 	lv.T = UntypedBoolType
 	lv.V = nil
 	lv.SetBool(res)

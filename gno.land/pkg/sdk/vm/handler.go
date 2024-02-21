@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gnolang/gno/telemetry"
+	"github.com/gnolang/gno/telemetry/traces"
 	abci "github.com/gnolang/gno/tm2/pkg/bft/abci/types"
 	"github.com/gnolang/gno/tm2/pkg/sdk"
-	"github.com/gnolang/gno/tm2/pkg/sdk/auth"
 	"github.com/gnolang/gno/tm2/pkg/std"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type vmHandler struct {
@@ -22,6 +24,16 @@ func NewHandler(vm *VMKeeper) vmHandler {
 }
 
 func (vh vmHandler) Process(ctx sdk.Context, msg std.Msg) sdk.Result {
+	if telemetry.TracesEnabled() {
+		// This is the trace's entry point for the VM namespace, so initialize it with the context.
+		traces.InitNamespace(ctx.Context(), traces.NamespaceVMProcess)
+		spanEnder := traces.StartSpan(
+			"vmHandler.Process",
+			attribute.String("msg.Type", msg.Type()),
+		)
+		defer spanEnder.End()
+	}
+
 	switch msg := msg.(type) {
 	case MsgAddPackage:
 		return vh.handleMsgAddPackage(ctx, msg)
@@ -37,16 +49,17 @@ func (vh vmHandler) Process(ctx sdk.Context, msg std.Msg) sdk.Result {
 
 // Handle MsgAddPackage.
 func (vh vmHandler) handleMsgAddPackage(ctx sdk.Context, msg MsgAddPackage) sdk.Result {
-	amount, err := std.ParseCoins("1000000ugnot") // XXX calculate
-	if err != nil {
-		return abciResult(err)
+	if telemetry.TracesEnabled() {
+		spanEnder := traces.StartSpan(
+			"vmHandler.handleMsgAddPackage",
+			attribute.String("msg.Creator", msg.Creator.String()),
+			attribute.String("msg.Package.Path", msg.Package.Path),
+			attribute.String("msg.Deposit", msg.Deposit.String()),
+		)
+		defer spanEnder.End()
 	}
-	err = vh.vm.bank.SendCoins(ctx, msg.Creator, auth.FeeCollectorAddress(), amount)
-	if err != nil {
-		return abciResult(err)
-	}
-	err = vh.vm.AddPackage(ctx, msg)
-	if err != nil {
+
+	if err := vh.vm.AddPackage(ctx, msg); err != nil {
 		return abciResult(err)
 	}
 	return sdk.Result{}
@@ -54,16 +67,18 @@ func (vh vmHandler) handleMsgAddPackage(ctx sdk.Context, msg MsgAddPackage) sdk.
 
 // Handle MsgCall.
 func (vh vmHandler) handleMsgCall(ctx sdk.Context, msg MsgCall) (res sdk.Result) {
-	amount, err := std.ParseCoins("1000000ugnot") // XXX calculate
-	if err != nil {
-		return abciResult(err)
+	if telemetry.TracesEnabled() {
+		spanEnder := traces.StartSpan(
+			"vmHandler.handleMsgCall",
+			attribute.String("msg.Caller", msg.Caller.String()),
+			attribute.String("msg.PkgPath", msg.PkgPath),
+			attribute.String("msg.Func", msg.Func),
+			attribute.StringSlice("msg.Args", msg.Args),
+		)
+		defer spanEnder.End()
 	}
-	err = vh.vm.bank.SendCoins(ctx, msg.Caller, auth.FeeCollectorAddress(), amount)
-	if err != nil {
-		return abciResult(err)
-	}
-	resstr := ""
-	resstr, err = vh.vm.Call(ctx, msg)
+
+	resstr, err := vh.vm.Call(ctx, msg)
 	if err != nil {
 		return abciResult(err)
 	}
@@ -81,16 +96,7 @@ func (vh vmHandler) handleMsgCall(ctx sdk.Context, msg MsgCall) (res sdk.Result)
 
 // Handle MsgRun.
 func (vh vmHandler) handleMsgRun(ctx sdk.Context, msg MsgRun) (res sdk.Result) {
-	amount, err := std.ParseCoins("1000000ugnot") // XXX calculate
-	if err != nil {
-		return abciResult(err)
-	}
-	err = vh.vm.bank.SendCoins(ctx, msg.Caller, auth.FeeCollectorAddress(), amount)
-	if err != nil {
-		return abciResult(err)
-	}
-	resstr := ""
-	resstr, err = vh.vm.Run(ctx, msg)
+	resstr, err := vh.vm.Run(ctx, msg)
 	if err != nil {
 		return abciResult(err)
 	}
@@ -112,6 +118,16 @@ const (
 )
 
 func (vh vmHandler) Query(ctx sdk.Context, req abci.RequestQuery) (res abci.ResponseQuery) {
+	if telemetry.TracesEnabled() {
+		traces.InitNamespace(ctx.Context(), traces.NamespaceVMQuery)
+		spanEnder := traces.StartSpan(
+			"vmHandler.Query",
+			attribute.String("req.Path", req.Path),
+			attribute.String("req.Data", string(req.Data)),
+		)
+		defer spanEnder.End()
+	}
+
 	switch secondPart(req.Path) {
 	case QueryPackage:
 		return vh.queryPackage(ctx, req)

@@ -2,10 +2,18 @@ package gnolang
 
 import (
 	"fmt"
+	"log"
+
+	bm "github.com/gnolang/gno/benchmarking"
 )
 
 func (m *Machine) doOpValueDecl() {
 	s := m.PopStmt().(*ValueDecl)
+
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpValueDecl, %v\n", s)
+	}
+
 	lb := m.LastBlock()
 	nt := Type(nil)
 	if s.Type != nil {
@@ -66,6 +74,9 @@ func (m *Machine) doOpValueDecl() {
 
 func (m *Machine) doOpTypeDecl() {
 	s := m.PopStmt().(*TypeDecl)
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpTypeDecl, %v\n", s)
+	}
 	t := m.PopValue().GetType()
 	tv := asValue(t)
 	last := m.LastBlock()

@@ -109,6 +109,9 @@ func getTransactionsFromFile(ctx context.Context, reader io.Reader) ([]std.Tx, e
 	txs := make([]std.Tx, 0)
 
 	scanner := bufio.NewScanner(reader)
+	const maxBufferSize = 2024 * 1024
+	buf := make([]byte, maxBufferSize)
+	scanner.Buffer(buf, maxBufferSize)
 
 	for scanner.Scan() {
 		select {

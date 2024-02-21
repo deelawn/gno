@@ -2,14 +2,18 @@ package gnolang
 
 import (
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/cockroachdb/apd/v3"
+	bm "github.com/gnolang/gno/benchmarking"
 )
 
 func (m *Machine) doOpInc() {
 	s := m.PopStmt().(*IncDecStmt)
-
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpInc, %v\n", s)
+	}
 	// Get reference to lhs.
 	pv := m.PopAsPointer(s.X)
 	lv := pv.TV
@@ -80,6 +84,9 @@ func (m *Machine) doOpInc() {
 func (m *Machine) doOpDec() {
 	s := m.PopStmt().(*IncDecStmt)
 
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpDec, %v\n", s)
+	}
 	// Get result ptr depending on lhs.
 	pv := m.PopAsPointer(s.X)
 	lv := pv.TV

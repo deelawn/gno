@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/exp/slog"
-
+	"github.com/gnolang/gno/telemetry"
+	"github.com/gnolang/gno/telemetry/metrics"
 	"github.com/gnolang/gno/tm2/pkg/amino"
 	cnscfg "github.com/gnolang/gno/tm2/pkg/bft/consensus/config"
 	cstypes "github.com/gnolang/gno/tm2/pkg/bft/consensus/types"
@@ -984,6 +984,13 @@ func (cs *ConsensusState) createProposalBlock() (block *types.Block, blockParts 
 		// This shouldn't happen.
 		cs.Logger.Error("enterPropose: Cannot propose anything: No commit for the previous block.")
 		return
+	}
+
+	if telemetry.MetricsEnabled() {
+		startTime := time.Now()
+		defer func(t time.Time) {
+			metrics.BuildBlockTimer.Collect(time.Since(t).Milliseconds())
+		}(startTime)
 	}
 
 	proposerAddr := cs.privValidator.GetPubKey().Address()

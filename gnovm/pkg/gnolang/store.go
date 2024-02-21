@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	bm "github.com/gnolang/gno/benchmarking"
 	"github.com/gnolang/gno/tm2/pkg/amino"
 	"github.com/gnolang/gno/tm2/pkg/std"
 	"github.com/gnolang/gno/tm2/pkg/store"
@@ -245,6 +246,10 @@ func (ds *defaultStore) SetPackageRealm(rlm *Realm) {
 // all []TypedValue types and TypeValue{} types to be
 // loaded (non-ref) types.
 func (ds *defaultStore) GetObject(oid ObjectID) Object {
+	if bm.Start {
+		bm.Pause()
+		defer bm.Resume()
+	}
 	oo := ds.GetObjectSafe(oid)
 	if oo == nil {
 		panic(fmt.Sprintf("unexpected object with id %s", oid.String()))
@@ -299,6 +304,10 @@ func (ds *defaultStore) loadObjectSafe(oid ObjectID) Object {
 // NOTE: unlike GetObject(), SetObject() is also used to persist updated
 // package values.
 func (ds *defaultStore) SetObject(oo Object) {
+	if bm.Start {
+		bm.Pause()
+		defer bm.Resume()
+	}
 	oid := oo.GetObjectID()
 	// replace children/fields with Ref.
 	o2 := copyValueWithRefs(nil, oo)
@@ -353,6 +362,11 @@ func (ds *defaultStore) SetObject(oo Object) {
 }
 
 func (ds *defaultStore) DelObject(oo Object) {
+	if bm.Start {
+		bm.Pause()
+		defer bm.Resume()
+	}
+
 	oid := oo.GetObjectID()
 	// delete from cache.
 	delete(ds.cacheObjects, oid)
@@ -477,6 +491,11 @@ func (ds *defaultStore) GetBlockNodeSafe(loc Location) BlockNode {
 }
 
 func (ds *defaultStore) SetBlockNode(bn BlockNode) {
+	if bm.Start {
+		bm.Pause()
+		defer bm.Resume()
+	}
+
 	loc := bn.GetLocation()
 	if loc.IsZero() {
 		panic("unexpected zero location in blocknode")

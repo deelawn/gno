@@ -2,7 +2,10 @@ package gnolang
 
 import (
 	"fmt"
+	"log"
 	"reflect"
+
+	bm "github.com/gnolang/gno/benchmarking"
 )
 
 func (m *Machine) doOpFieldType() {
@@ -72,6 +75,9 @@ func (m *Machine) doOpSliceType() {
 
 func (m *Machine) doOpFuncType() {
 	x := m.PopExpr().(*FuncTypeExpr)
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpFuncType, %v\n", x)
+	}
 	// Allocate space for data.
 	params := make([]FieldType, len(x.Params))
 	results := make([]FieldType, len(x.Results))

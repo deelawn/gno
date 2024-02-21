@@ -2,8 +2,11 @@ package gnolang
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"unicode/utf8"
+
+	bm "github.com/gnolang/gno/benchmarking"
 )
 
 /*
@@ -55,6 +58,17 @@ func (m *Machine) doOpExec(op Op) {
 	if debug {
 		debug.Printf("PEEK STMT: %v\n", s)
 		debug.Printf("%v\n", m)
+	}
+	if m.Benchmark == false {
+		measure := bm.Enabled() &&
+			bm.Entry == bm.KEEPER_CALL
+		if measure {
+			// enable benchmark after doOpExec
+			m.Benchmark = true
+		}
+	}
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpExec, %v\n", s)
 	}
 
 	// NOTE this could go in the switch statement, and we could
@@ -786,6 +800,9 @@ EXEC_SWITCH:
 
 func (m *Machine) doOpIfCond() {
 	is := m.PopStmt().(*IfStmt)
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpIfCond, %v\n", is)
+	}
 	b := m.LastBlock()
 	// Test cond and run Body or Else.
 	cond := m.PopValue()
@@ -825,6 +842,10 @@ func (m *Machine) doOpIfCond() {
 func (m *Machine) doOpTypeSwitch() {
 	ss := m.PopStmt().(*SwitchStmt)
 	xv := m.PopValue()
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpTypeSwitch, %v, %v\n", ss, xv)
+	}
+
 	xtid := TypeID("")
 	if xv.T != nil {
 		xtid = xv.T.TypeID()
@@ -907,6 +928,9 @@ func (m *Machine) doOpTypeSwitch() {
 
 func (m *Machine) doOpSwitchClause() {
 	ss := m.PeekStmt1().(*SwitchStmt)
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpSwitchClause, %v\n", ss)
+	}
 	// tv := m.PeekValue(1) // switch tag value
 	// caiv := m.PeekValue(2) // switch clause case index (reuse)
 	cliv := m.PeekValue(3) // switch clause index (reuse)
@@ -950,8 +974,13 @@ func (m *Machine) doOpSwitchClause() {
 }
 
 func (m *Machine) doOpSwitchClauseCase() {
-	cv := m.PopValue()     // switch case value
-	tv := m.PeekValue(1)   // switch tag value
+	cv := m.PopValue()   // switch case value
+	tv := m.PeekValue(1) // switch tag value
+
+	if bm.OpCodeDetails && bm.Start {
+		log.Printf("benchmark.OpSwitchClauseCase, %v | %v\n", cv, tv)
+	}
+
 	caiv := m.PeekValue(2) // clause case index (reuse)
 	cliv := m.PeekValue(3) // clause index (reuse)
 
