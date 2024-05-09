@@ -59,8 +59,9 @@ var gStringerType = &DeclaredType{
 // Uverse package
 
 var (
-	uverseNode  *PackageNode
-	uverseValue *PackageValue
+	uverseNode               *PackageNode
+	uverseValue              *PackageValue
+	uverseDefinitionComplete bool
 )
 
 const uversePkgPath = ".uverse"
@@ -998,6 +999,8 @@ func UverseNode() *PackageNode {
 			m.Exceptions = nil
 		},
 	)
+
+	uverseDefinitionComplete = true
 	return uverseNode
 }
 
