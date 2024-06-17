@@ -750,22 +750,28 @@ func (m *Machine) doOpStructLit() {
 
 func (m *Machine) doOpFuncLit() {
 	x := m.PopExpr().(*FuncLitExpr)
-	ft := m.PopValue().V.(TypeValue).Type.(*FuncType)
+	funcType := m.PopValue().V.(TypeValue).Type.(*FuncType)
 	lb := m.LastBlock()
 	m.Alloc.AllocateFunc()
-	m.PushValue(TypedValue{
-		T: ft,
-		V: &FuncValue{
-			Type:       ft,
-			IsMethod:   false,
-			Source:     x,
-			Name:       "",
-			Closure:    lb,
-			PkgPath:    m.Package.PkgPath,
-			body:       x.Body,
-			nativeBody: nil,
+	funcValue := &FuncValue{
+		Type:       funcType,
+		IsMethod:   false,
+		Source:     x,
+		Name:       "",
+		Closure:    lb,
+		PkgPath:    m.Package.PkgPath,
+		body:       x.Body,
+		nativeBody: nil,
+	}
+
+	m.PushValue(
+		TypedValue{
+			T: funcType,
+			V: funcValue,
 		},
-	})
+	)
+
+	lb.inlineFuncs = append(lb.inlineFuncs, funcValue)
 }
 
 func (m *Machine) doOpConvert() {

@@ -554,6 +554,19 @@ func (fv *FuncValue) IsNative() bool {
 	return true
 }
 
+func (fv *FuncValue) FinalizeBlockClosure() {
+	if fv.Closure == nil {
+		return
+	}
+
+	if block, ok := fv.Closure.(*Block); ok {
+		newBlock := *block
+		newBlock.Values = make([]TypedValue, len(block.Values))
+		copy(newBlock.Values, block.Values)
+		fv.Closure = &newBlock
+	}
+}
+
 func (fv *FuncValue) Copy(alloc *Allocator) *FuncValue {
 	alloc.AllocateFunc()
 	return &FuncValue{
@@ -2254,12 +2267,13 @@ func (tv *TypedValue) GetSlice2(alloc *Allocator, low, high, max int) TypedValue
 
 // TODO rename to BlockValue.
 type Block struct {
-	ObjectInfo // for closures
-	Source     BlockNode
-	Values     []TypedValue
-	Parent     Value
-	Blank      TypedValue // captures "_" // XXX remove and replace with global instance.
-	bodyStmt   bodyStmt   // XXX expose for persistence, not needed for MVP.
+	ObjectInfo  // for closures
+	Source      BlockNode
+	Values      []TypedValue
+	Parent      Value
+	Blank       TypedValue // captures "_" // XXX remove and replace with global instance.
+	bodyStmt    bodyStmt   // XXX expose for persistence, not needed for MVP.
+	inlineFuncs []*FuncValue
 }
 
 // NOTE: for allocation, use *Allocator.NewBlock.
