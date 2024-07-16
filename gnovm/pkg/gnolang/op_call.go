@@ -198,10 +198,18 @@ func (m *Machine) doOpReturn() {
 			// We are changing realms or exiting a realm.
 			finalize = true
 		}
-		if finalize {
+
+		// Don't finalize when exiting a realm if in the midst of an
+		// unrecovered panic.
+		if finalize && len(m.Exceptions) == 0 {
 			// Finalize realm updates!
 			// NOTE: This is a resource intensive undertaking.
 			crlm.FinalizeRealmTransaction(m.ReadOnly, m.Store)
+		} else if finalize { // len(m.Exceptions) > 0
+			// We are exiting in a state of panic. Reset realm state so that it any changes
+			// are not acessible from the calling realm's defer.
+
+			// TODO: need to reset the realm's block state.
 		}
 	}
 	// finalize
@@ -268,7 +276,13 @@ func (m *Machine) doOpReturnCallDefers() {
 		m.ForcePopOp()
 		if len(m.Exceptions) > 0 {
 			// In a state of panic (not return).
-			// Pop the containing function frame.
+			nextFrame := m.LastCallFrame(2)
+			if nextFrame != nil && nextFrame.LastRealm != cfr.LastRealm {
+				// Exiting a realm during panic.
+				m.PushOp(OpReturn)
+				return
+			}
+
 			m.PopFrame()
 		}
 		return
