@@ -48,6 +48,7 @@ type Store interface {
 	SetCacheType(Type)
 	SetType(Type)
 	FinalizeTransientCacheTypes()
+	ClearTransientCacheTypes()
 	GetBlockNode(Location) BlockNode
 	GetBlockNodeSafe(Location) BlockNode
 	SetBlockNode(BlockNode)
@@ -455,7 +456,11 @@ func (ds *defaultStore) FinalizeTransientCacheTypes() {
 		ds.cacheTypes[tid] = tt
 	}
 
-	ds.transientCacheTypes = make(map[TypeID]Type)
+	clear(ds.transientCacheTypes)
+}
+
+func (ds *defaultStore) ClearTransientCacheTypes() {
+	clear(ds.transientCacheTypes)
 }
 
 func (ds *defaultStore) SetType(tt Type) {

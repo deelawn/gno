@@ -434,6 +434,7 @@ func (vm *VMKeeper) AddPackage(ctx sdk.Context, msg MsgAddPackage) (err error) {
 	defer m2.Release()
 	defer func() {
 		if r := recover(); r != nil {
+			m2.Store.ClearTransientCacheTypes()
 			switch r.(type) {
 			case store.OutOfGasException: // panic in consumeGas()
 				panic(r)
