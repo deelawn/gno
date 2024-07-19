@@ -445,7 +445,7 @@ func (vm *VMKeeper) AddPackage(ctx sdk.Context, msg MsgAddPackage) (err error) {
 		}
 
 		// Otherwise, if no panic, persist the transient types.
-		m2.Store.PersistTransientCacheTypes()
+		m2.Store.FinalizeTransientCacheTypes()
 	}()
 	m2.RunMemPackage(memPkg, true)
 
