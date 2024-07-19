@@ -47,6 +47,7 @@ type Store interface {
 	GetTypeSafe(tid TypeID) Type
 	SetCacheType(Type)
 	SetType(Type)
+	PersistTransientCacheTypes()
 	GetBlockNode(Location) BlockNode
 	GetBlockNodeSafe(Location) BlockNode
 	SetBlockNode(BlockNode)
@@ -79,17 +80,18 @@ type Store interface {
 
 // Used to keep track of in-mem objects during tx.
 type defaultStore struct {
-	alloc            *Allocator    // for accounting for cached items
-	pkgGetter        PackageGetter // non-realm packages
-	cacheObjects     map[ObjectID]Object
-	cacheTypes       map[TypeID]Type
-	cacheNodes       map[Location]BlockNode
-	cacheNativeTypes map[reflect.Type]Type // go spec: reflect.Type are comparable
-	baseStore        store.Store           // for objects, types, nodes
-	iavlStore        store.Store           // for escaped object hashes
-	pkgInjector      PackageInjector       // for injecting natives
-	nativeStore      NativeStore           // for injecting natives
-	go2gnoStrict     bool                  // if true, native->gno type conversion must be registered.
+	alloc               *Allocator    // for accounting for cached items
+	pkgGetter           PackageGetter // non-realm packages
+	cacheObjects        map[ObjectID]Object
+	cacheTypes          map[TypeID]Type
+	transientCacheTypes map[TypeID]Type
+	cacheNodes          map[Location]BlockNode
+	cacheNativeTypes    map[reflect.Type]Type // go spec: reflect.Type are comparable
+	baseStore           store.Store           // for objects, types, nodes
+	iavlStore           store.Store           // for escaped object hashes
+	pkgInjector         PackageInjector       // for injecting natives
+	nativeStore         NativeStore           // for injecting natives
+	go2gnoStrict        bool                  // if true, native->gno type conversion must be registered.
 
 	// transient
 	opslog  []StoreOp // for debugging and testing.
@@ -98,15 +100,16 @@ type defaultStore struct {
 
 func NewStore(alloc *Allocator, baseStore, iavlStore store.Store) *defaultStore {
 	ds := &defaultStore{
-		alloc:            alloc,
-		pkgGetter:        nil,
-		cacheObjects:     make(map[ObjectID]Object),
-		cacheTypes:       make(map[TypeID]Type),
-		cacheNodes:       make(map[Location]BlockNode),
-		cacheNativeTypes: make(map[reflect.Type]Type),
-		baseStore:        baseStore,
-		iavlStore:        iavlStore,
-		go2gnoStrict:     true,
+		alloc:               alloc,
+		pkgGetter:           nil,
+		cacheObjects:        make(map[ObjectID]Object),
+		cacheTypes:          make(map[TypeID]Type),
+		transientCacheTypes: make(map[TypeID]Type),
+		cacheNodes:          make(map[Location]BlockNode),
+		cacheNativeTypes:    make(map[reflect.Type]Type),
+		baseStore:           baseStore,
+		iavlStore:           iavlStore,
+		go2gnoStrict:        true,
 	}
 	InitStoreCaches(ds)
 	return ds
@@ -447,6 +450,15 @@ func (ds *defaultStore) SetCacheType(tt Type) {
 	}
 }
 
+func (ds *defaultStore) PersistTransientCacheTypes() {
+	for tid, tt := range ds.transientCacheTypes {
+		ds.SetType(tt)
+		ds.cacheTypes[tid] = tt
+	}
+
+	ds.transientCacheTypes = make(map[TypeID]Type)
+}
+
 func (ds *defaultStore) SetType(tt Type) {
 	tid := tt.TypeID()
 	// return if tid already known.
@@ -464,8 +476,8 @@ func (ds *defaultStore) SetType(tt Type) {
 		bz := amino.MustMarshalAny(tcopy)
 		ds.baseStore.Set([]byte(key), bz)
 	}
-	// save type to cache.
-	ds.cacheTypes[tid] = tt
+	// Save type to transient cache. Transient types will be persisted if addpkg is successsful.
+	ds.transientCacheTypes[tid] = tt
 }
 
 func (ds *defaultStore) GetBlockNode(loc Location) BlockNode {
